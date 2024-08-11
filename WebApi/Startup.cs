@@ -6,8 +6,10 @@ using Infrastructure;
 using Infrastructure.Repositories;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using WebApi.Middleware;
+using WebApi.Options;
 
 namespace WebApi;
 
@@ -42,8 +44,24 @@ public class Startup
             c.SwaggerDoc("v1", new OpenApiInfo { Title = "Web", Version = "v1" });
         });
 
-        services.AddDbContext<ApplicationDbContext>(builder =>
-            builder.UseSqlServer(Configuration.GetConnectionString("Application")));
+        services.ConfigureOptions<DatabaseOptionsSetup>();
+
+        services.AddDbContext<ApplicationDbContext>(
+            (serviceProvider, dbContextOptionsBuilder) =>
+            {
+                var databaseOptions = serviceProvider.GetService<IOptions<DatabaseOptions>>()!.Value;
+
+                dbContextOptionsBuilder.UseSqlServer(
+                    connectionString: databaseOptions.ConnectionStrings,
+                    sqlServerOptionsAction: sqlServerAction =>
+                    {
+                        sqlServerAction.EnableRetryOnFailure(databaseOptions.MaxRetryCount);
+                        sqlServerAction.CommandTimeout(databaseOptions.CommandTimeout);
+                    }
+                );
+                dbContextOptionsBuilder.EnableDetailedErrors(databaseOptions.EnableDetailedErrors);
+                dbContextOptionsBuilder.EnableSensitiveDataLogging(databaseOptions.EnableSensitiveDataLogging);
+            });
 
         services.AddScoped<IWebinarRepository, WebinarRepository>();
 
